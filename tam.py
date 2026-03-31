@@ -1,5 +1,6 @@
 import os, torch, cv2, subprocess
-import fitz
+# import fitz
+import pymupdf as fitz
 import numpy as np
 from scipy.optimize import minimize_scalar
 from pathlib import Path
@@ -143,89 +144,91 @@ def generate_latex(words, relevances, cmap="bwr", font=r'{18pt}{21pt}'):
     return latex_code
 
 
-def compile_latex_to_jpg(latex_code, path='word_colors.pdf', delete_aux_files=True, dpi=500):
-    """
-    Compile a LaTeX string into a JPG image.
-
-    Parameters:
-    - latex_code (str): The LaTeX source code to compile.
-    - path (str or Path): File path for intermediate PDF and auxiliary files. The output image is returned as an array.
-    - delete_aux_files (bool): Whether to delete auxiliary files (.aux, .log, .tex, .pdf) after compilation.
-    - dpi (int): Resolution for the output image in dots per inch.
-
-    Returns:
-    - img (numpy.ndarray): The compiled LaTeX rendered as a color image (BGR) array.
-                          Returns None if compilation fails.
-    """
-
-    path = Path(path)
-    os.makedirs(path.parent, exist_ok=True)
-
-    with open(path.with_suffix(".tex"), 'w') as f:
-        f.write(latex_code)
-
-    try:
-        res_code = subprocess.run(['xelatex', '--output-directory', path.parent, path.with_suffix(".tex")], \
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
-    except:
-        print('Skip, fail to compile: ' + res_code)
-        return None
-
-    mat = fitz.Matrix(dpi / 72, dpi / 72)
-    page = fitz.open(path.with_suffix(".pdf")).load_page(0)
-    pix = page.get_pixmap(matrix=mat, alpha=False)
-
-    if delete_aux_files:
-        for suffix in ['.aux', '.log', '.tex', '.pdf']:
-            os.remove(path.with_suffix(suffix))
-
-    getpngdata = pix.tobytes("png")
-    image_array = np.frombuffer(getpngdata, dtype=np.uint8)
-    img = cv2.imdecode(image_array, cv2.IMREAD_ANYCOLOR)[:,:,:3]
-    return img
 
 
-def vis_text(words, relevances, candidates, candi_scores, vis_token_idx, path='heatmap.jpg', font=r'{18pt}{21pt}'):
-    """
-    Visualizes text tokens and their relevance scores as a heatmap image using LaTeX.
+# def compile_latex_to_jpg(latex_code, path='word_colors.pdf', delete_aux_files=True, dpi=500):
+#     """
+#     Compile a LaTeX string into a JPG image.
 
-    This function processes a list of words and their corresponding relevance scores, along with candidate tokens 
-    and their scores, to create a color-coded heatmap visualization. It handles special LaTeX characters by escaping 
-    them appropriately to ensure correct LaTeX rendering. The visualization includes the explained tokens, subsequent 
-    tokens, and top prediction candidates with distinct coloring based on their scores.
+#     Parameters:
+#     - latex_code (str): The LaTeX source code to compile.
+#     - path (str or Path): File path for intermediate PDF and auxiliary files. The output image is returned as an array.
+#     - delete_aux_files (bool): Whether to delete auxiliary files (.aux, .log, .tex, .pdf) after compilation.
+#     - dpi (int): Resolution for the output image in dots per inch.
 
-    Args:
-        words: All tokens need to visualize.
-        relevances: Relevance scores corresponding to each token.
-        candidates: Candidate tokens (top k predictions).
-        candi_scores: Scores associated with each candidate token.
-        vis_token_idx (int): Index of the token to vis (explain).
-        path (str, optional): File path to save the generated heatmap image. Defaults to 'heatmap.jpg'.
-        font (str, optional): LaTeX font size settings for the visualization. Defaults to r'{18pt}{21pt}'.
+#     Returns:
+#     - img (numpy.ndarray): The compiled LaTeX rendered as a color image (BGR) array.
+#                           Returns None if compilation fails.
+#     """
 
-    Returns:
-        str: Numpy image for the visualized texts
-    """
+#     path = Path(path)
+#     os.makedirs(path.parent, exist_ok=True)
+
+#     with open(path.with_suffix(".tex"), 'w') as f:
+#         f.write(latex_code)
+
+#     try:
+#         res_code = subprocess.run(['xelatex', '--output-directory', path.parent, path.with_suffix(".tex")], \
+#                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+#     except:
+#         print('Skip, fail to compile: ' + res_code)
+#         return None
+
+#     mat = fitz.Matrix(dpi / 72, dpi / 72)
+#     page = fitz.open(path.with_suffix(".pdf")).load_page(0)
+#     pix = page.get_pixmap(matrix=mat, alpha=False)
+
+#     if delete_aux_files:
+#         for suffix in ['.aux', '.log', '.tex', '.pdf']:
+#             os.remove(path.with_suffix(suffix))
+
+#     getpngdata = pix.tobytes("png")
+#     image_array = np.frombuffer(getpngdata, dtype=np.uint8)
+#     img = cv2.imdecode(image_array, cv2.IMREAD_ANYCOLOR)[:,:,:3]
+#     return img
 
 
-    # add scores (-2, gray) for next tokens after the exaplained one
-    add_scores = []
-    for i in range(len(relevances), len(words[:-1])):
-        add_scores.append(-2)
+# def vis_text(words, relevances, candidates, candi_scores, vis_token_idx, path='heatmap.jpg', font=r'{18pt}{21pt}'):
+#     """
+#     Visualizes text tokens and their relevance scores as a heatmap image using LaTeX.
 
-    # explained tokens + next tokens + top pred candidates (see defination of scores in generate_latex)
-    all_scores = relevances.tolist() + add_scores + [-3] + candi_scores.cpu().float().tolist()
-    all_scores[vis_token_idx] = -1
+#     This function processes a list of words and their corresponding relevance scores, along with candidate tokens 
+#     and their scores, to create a color-coded heatmap visualization. It handles special LaTeX characters by escaping 
+#     them appropriately to ensure correct LaTeX rendering. The visualization includes the explained tokens, subsequent 
+#     tokens, and top prediction candidates with distinct coloring based on their scores.
 
-    # scores correspond to the words
-    all_words = words[:-1] + [''] + ['$ ' + _ + '$' for _ in candidates]
+#     Args:
+#         words: All tokens need to visualize.
+#         relevances: Relevance scores corresponding to each token.
+#         candidates: Candidate tokens (top k predictions).
+#         candi_scores: Scores associated with each candidate token.
+#         vis_token_idx (int): Index of the token to vis (explain).
+#         path (str, optional): File path to save the generated heatmap image. Defaults to 'heatmap.jpg'.
+#         font (str, optional): LaTeX font size settings for the visualization. Defaults to r'{18pt}{21pt}'.
 
-    # replace special texts to fit latex
-    all_words = [_.replace('\\', '\\backslash').replace('\n', '\\newline').replace('_', '\\_').replace('^', '\\^').replace('&', '\\&').replace('%', '\\%').replace('Ċ', '\\newline') for _ in all_words]
+#     Returns:
+#         str: Numpy image for the visualized texts
+#     """
 
-    # to latex, then to img
-    latex_code = generate_latex(all_words, all_scores, cmap='bwr', font=font)
-    return compile_latex_to_jpg(latex_code, path=path, delete_aux_files=True)
+
+#     # add scores (-2, gray) for next tokens after the exaplained one
+#     add_scores = []
+#     for i in range(len(relevances), len(words[:-1])):
+#         add_scores.append(-2)
+
+#     # explained tokens + next tokens + top pred candidates (see defination of scores in generate_latex)
+#     all_scores = relevances.tolist() + add_scores + [-3] + candi_scores.cpu().float().tolist()
+#     all_scores[vis_token_idx] = -1
+
+#     # scores correspond to the words
+#     all_words = words[:-1] + [''] + ['$ ' + _ + '$' for _ in candidates]
+
+#     # replace special texts to fit latex
+#     all_words = [_.replace('\\', '\\backslash').replace('\n', '\\newline').replace('_', '\\_').replace('^', '\\^').replace('&', '\\&').replace('%', '\\%').replace('Ċ', '\\newline') for _ in all_words]
+
+#     # to latex, then to img
+#     latex_code = generate_latex(all_words, all_scores, cmap='bwr', font=font)
+#     return compile_latex_to_jpg(latex_code, path=path, delete_aux_files=True)
 
 
 def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, candidates, candi_scores, \
@@ -309,7 +312,8 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
         # text vis via latex
         try:
             txt_map = vis_text(txts, txt_scores, candidates, candi_scores, vis_token_idx, path=img_save_fn, font=r'{5pt}{6pt}')
-        except:
+        except Exception as e:
+            print(e)
             print('Skip text visualization, please check the installation of texlive-xetex.')
             return out_img, img_map
         
@@ -348,7 +352,8 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
         # vis text via latex
         try:
             txt_map = vis_text(txts, txt_scores, candidates, candi_scores, vis_token_idx, path=img_save_fn)
-        except:
+        except Exception as e:
+            print(e)
             print('Skip text visualization, please check the installation of texlive-xetex.')
             return out_img, img_scores
 
@@ -384,7 +389,8 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
         # vis text via latex
         try:
             txt_map = vis_text(txts, txt_scores, candidates, candi_scores, vis_token_idx, path=img_save_fn, font=r'{5pt}{6pt}')
-        except:
+        except Exception as e:
+            print(e)
             print('Skip text visualization, please check the installation of texlive-xetex.')
             return out_img, img_scores
 
@@ -398,20 +404,13 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
         return out_img, img_scores
 
 
-
 def id2idx(inp_id, target_id, return_last=False):
     """
     Convert a target ID or sequence of IDs to the corresponding index in the input list.
-
-    Args:
-        input_ids (list of int): The list of token IDs to search within.
-        target_id (int or list of int): The target token ID or sequence of token IDs to find.
-        return_last (bool): If True and target_id is a list, return the index of the last token in the matched sequence.
-                            Otherwise, return the index of the first token.
-
-    Returns:
-        int: The index of the target ID (or start/end of the sequence) in input_ids, or -1 if not found.
     """
+    # FIX: Silently handle the -1 boundary case without throwing/printing an exception
+    if target_id == -1:
+        return -1
 
     # use a array of tokens as the identifier
     if isinstance(target_id, list):
@@ -431,9 +430,180 @@ def id2idx(inp_id, target_id, return_last=False):
     else:
         try:
             idx = inp_id.index(target_id)
-        except:
+        except ValueError: # FIX: Catch specific ValueError silently instead of printing
             idx = -1
+            
     return idx
+
+def compile_latex_to_jpg(latex_code, path='word_colors.pdf', delete_aux_files=True, dpi=500):
+    """
+    Compile a LaTeX string into a JPG image.
+    """
+    path = Path(path)
+    os.makedirs(path.parent, exist_ok=True)
+
+    with open(path.with_suffix(".tex"), 'w') as f:
+        f.write(latex_code)
+
+    try:
+        # Run xelatex in nonstopmode and capture the output
+        subprocess.run(
+            ['xelatex', '-halt-on-error', '-interaction=nonstopmode', '--output-directory', path.parent, path.with_suffix(".tex")], 
+            capture_output=True, text=True, timeout=60, check=True
+        )
+    except subprocess.CalledProcessError as e:
+        print(f"\n[!] LaTeX Compilation Failed for {path.name}")
+        # Extract the actual error from the LaTeX log
+        log_lines = e.stdout.splitlines()
+        for i, line in enumerate(log_lines):
+            if line.startswith('!'):
+                print(f"LaTeX Error: {line}")
+                print(f"Context: {log_lines[i+1] if i+1 < len(log_lines) else ''}")
+                break
+        return None
+    except Exception as e:
+        print(f'Skip, unexpected error: {e}')
+        return None
+
+    try:
+        mat = fitz.Matrix(dpi / 72, dpi / 72)
+    except AttributeError:
+        print("Error: 'fitz' has no attribute 'Matrix'. Run: pip uninstall fitz && pip install PyMuPDF")
+        return None
+        
+    page = fitz.open(path.with_suffix(".pdf")).load_page(0)
+    pix = page.get_pixmap(matrix=mat, alpha=False)
+
+    if delete_aux_files:
+        for suffix in ['.aux', '.log', '.tex', '.pdf']:
+            if os.path.exists(path.with_suffix(suffix)):
+                os.remove(path.with_suffix(suffix))
+
+    getpngdata = pix.tobytes("png")
+    image_array = np.frombuffer(getpngdata, dtype=np.uint8)
+    img = cv2.imdecode(image_array, cv2.IMREAD_ANYCOLOR)[:,:,:3]
+    return img
+
+
+def vis_text(words, relevances, candidates, candi_scores, vis_token_idx, path='heatmap.jpg', font=r'{18pt}{21pt}'):
+    """
+    Visualizes text tokens and their relevance scores as a heatmap image using LaTeX.
+    """
+    add_scores = []
+    for i in range(len(relevances), len(words[:-1])):
+        add_scores.append(-2)
+
+    all_scores = relevances.tolist() + add_scores + [-3] + candi_scores.cpu().float().tolist()
+    all_scores[vis_token_idx] = -1
+
+    all_words = words[:-1] + [''] + ['$ ' + _ + '$' for _ in candidates]
+
+    # MORE AGGRESSIVE ESCAPING for Qwen/LLM tokens
+    safe_words = []
+    for word in all_words:
+        # Ignore the candidate formatting markers for a second
+        is_candidate = word.startswith('$ ') and word.endswith('$')
+        if is_candidate:
+            word = word[2:-1] # strip markers temporarily
+            
+        w = word.replace('\\', '\\textbackslash{}') \
+                .replace('_', '\\_') \
+                .replace('^', '\\textasciicircum{}') \
+                .replace('&', '\\&') \
+                .replace('%', '\\%') \
+                .replace('#', '\\#') \
+                .replace('$', '\\$') \
+                .replace('{', '\\{') \
+                .replace('}', '\\}') \
+                .replace('~', '\\textasciitilde{}') \
+                .replace('<', '\\textless{}') \
+                .replace('>', '\\textgreater{}') \
+                .replace('|', '\\textbar{}') \
+                .replace('\n', '\\newline ') \
+                .replace('Ċ', '\\newline ')
+                
+        if is_candidate:
+            w = '$ ' + w + '$' # put markers back
+            
+        safe_words.append(w)
+
+    latex_code = generate_latex(safe_words, all_scores, cmap='bwr', font=font)
+    return compile_latex_to_jpg(latex_code, path=path, delete_aux_files=True)
+
+
+# def compile_latex_to_jpg(latex_code, path='word_colors.pdf', delete_aux_files=True, dpi=500):
+#     """
+#     Compile a LaTeX string into a JPG image.
+#     """
+#     path = Path(path)
+#     os.makedirs(path.parent, exist_ok=True)
+
+#     with open(path.with_suffix(".tex"), 'w') as f:
+#         f.write(latex_code)
+
+#     try:
+#         # FIX: Added check=True so subprocess raises a CalledProcessError if xelatex fails
+#         subprocess.run(['xelatex', '--output-directory', path.parent, path.with_suffix(".tex")], \
+#                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60, check=True)
+#     except Exception as e:
+#         # FIX: Print the actual exception 'e' instead of the unassigned 'res_code'
+#         print(f'Skip, fail to compile LaTeX: {e}')
+#         return None
+
+#     try:
+#         mat = fitz.Matrix(dpi / 72, dpi / 72)
+#     except AttributeError:
+#         # FIX: Helpful warning if the user still has the wrong 'fitz' package
+#         print("Error: 'fitz' has no attribute 'Matrix'. Run: pip uninstall fitz && pip install PyMuPDF")
+#         return None
+        
+#     page = fitz.open(path.with_suffix(".pdf")).load_page(0)
+#     pix = page.get_pixmap(matrix=mat, alpha=False)
+
+#     if delete_aux_files:
+#         for suffix in ['.aux', '.log', '.tex', '.pdf']:
+#             os.remove(path.with_suffix(suffix))
+
+#     getpngdata = pix.tobytes("png")
+#     image_array = np.frombuffer(getpngdata, dtype=np.uint8)
+#     img = cv2.imdecode(image_array, cv2.IMREAD_ANYCOLOR)[:,:,:3]
+#     return img
+# def id2idx(inp_id, target_id, return_last=False):
+#     """
+#     Convert a target ID or sequence of IDs to the corresponding index in the input list.
+
+#     Args:
+#         input_ids (list of int): The list of token IDs to search within.
+#         target_id (int or list of int): The target token ID or sequence of token IDs to find.
+#         return_last (bool): If True and target_id is a list, return the index of the last token in the matched sequence.
+#                             Otherwise, return the index of the first token.
+
+#     Returns:
+#         int: The index of the target ID (or start/end of the sequence) in input_ids, or -1 if not found.
+#     """
+
+#     # use a array of tokens as the identifier
+#     if isinstance(target_id, list):
+#         n = len(target_id)
+#         indexes = [i for i in range(len(inp_id) - n + 1) if inp_id[i:i+n] == target_id]
+#         if len(indexes) > 0:
+#             # get the idx of the first token as the end identifier
+#             idx = indexes[-1]
+
+#             # get the idx of the last token as the begain identifier
+#             if return_last:
+#                 idx += len(target_id) - 1
+#         else:
+#             idx = -1
+
+#     # if the id is unique, use a int is simple
+#     else:
+#         try:
+#             idx = inp_id.index(target_id)
+#         except Exception as e: 
+#             print(e)
+#             idx = -1
+#     return idx
 
 
 
