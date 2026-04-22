@@ -232,7 +232,7 @@ def generate_latex(words, relevances, cmap="bwr", font=r'{18pt}{21pt}'):
 
 
 def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, candidates, candi_scores, \
-                       vis_token_idx, img_save_fn, eval_only=False, vis_width=-1):
+                       vis_token_idx, img_save_fn, eval_only=False, vis_width=-1, skip_latex=True):
     """
     Process multimodal tokens: visualizing combined image and text activations with normalizing, filtering, and blending scores.
 
@@ -271,7 +271,8 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
     img_scores = all_scores[:len(img_scores)]
     txt_scores = all_scores[len(img_scores):]
 
-    eval_only = True if img_save_fn == "" else False
+    if not eval_only:
+        eval_only = True if img_save_fn == "" else False
 
     # for multiple imgs
     if isinstance(vision_shape[0], tuple):
@@ -308,6 +309,9 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
 
         out_img = [img_map[i] * 0.5 + resized_img[i] * 0.5 for i in range(len(vision_shape))]
         out_img = np.concatenate(out_img, 1)
+
+        if skip_latex:
+            return out_img, img_map
 
         # text vis via latex
         try:
@@ -349,6 +353,9 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
             raw_img = cv2.resize(raw_img, (w, h))
         out_img = img_map * 0.5 + raw_img * 0.5
 
+        if skip_latex:
+            return out_img, img_scores
+
         # vis text via latex
         try:
             txt_map = vis_text(txts, txt_scores, candidates, candi_scores, vis_token_idx, path=img_save_fn)
@@ -385,6 +392,9 @@ def multimodal_process(raw_img, vision_shape, img_scores, txt_scores, txts, cand
             raw_img = [cv2.resize(_, (w, h)) for _ in raw_img]
         out_img = [img_map[i] * 0.5 + raw_img[i] * 0.5 for i in range(b)]
         out_img = np.concatenate(out_img, 1)
+
+        if skip_latex:
+            return out_img, img_scores
 
         # vis text via latex
         try:
@@ -608,7 +618,7 @@ def vis_text(words, relevances, candidates, candi_scores, vis_token_idx, path='h
 
 
 def TAM(tokens, vision_shape, logit_list, special_ids, vision_input, \
-        processor, save_fn, target_token, img_scores_list, eval_only=False):
+        processor, save_fn, target_token, img_scores_list, eval_only=False, skip_latex=True):
 
     """
     Generate a Token Activation Map (TAM) with optional Estimated Causal Inference (ECI) 
@@ -699,7 +709,7 @@ def TAM(tokens, vision_shape, logit_list, special_ids, vision_input, \
         for t in range(len(prompt) + 1):
             # recursion to process prompt tokens
             img_map = TAM(tokens, vision_shape, logit_list, special_ids, vision_input, processor, \
-                          save_fn if t == len(prompt) else '', [0, t], img_scores_list, eval_only)
+                          save_fn if t == len(prompt) else '', [0, t], img_scores_list, eval_only, skip_latex=skip_latex)
 
             ## the first prompt token is used to reflect the differenec of activation degrees
             if t == 0:
@@ -780,7 +790,7 @@ def TAM(tokens, vision_shape, logit_list, special_ids, vision_input, \
     
     # apply the multimodal_process to obtain TAM
     vis_img, img_map = multimodal_process(cv_img, vision_shape, img_scores, txt_scores, txt_all, candidates, candi_scores, vis_token_idx, \
-            save_fn, eval_only=eval_only, vis_width=-1 if eval_only else 500)
+            save_fn, eval_only=eval_only, vis_width=-1 if eval_only else 500, skip_latex=skip_latex)
     
     if save_fn != '' and vis_token_idx < (len(txt_all) - 1) and isinstance(vis_img, np.ndarray):
         os.makedirs(os.path.dirname(save_fn), exist_ok=True)
